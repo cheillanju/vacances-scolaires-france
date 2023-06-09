@@ -1,175 +1,350 @@
 # -*- coding: utf-8 -*-
 import unittest
-import datetime
+from datetime import date
+from unittest.mock import patch, MagicMock
 
-from vacances_scolaires_france import SchoolHolidayDates
-from vacances_scolaires_france import UnsupportedYearException
-from vacances_scolaires_france import UnsupportedZoneException
-from vacances_scolaires_france import UnsupportedHolidayException
+from vacances_scolaires_france import SchoolHolidayDates,\
+    UnsupportedZoneException,\
+    UnsupportedHolidayException,\
+    get_records,\
+    format_records
+
+
+URL = 'https://data.education.gouv.fr/api/v2/catalog/datasets/fr-en-calendrier-scolaire/exports/json'
+
+mocked_response_read = bytes("""
+        [
+            {
+                "description": "Vacances d'Hiver",
+                "start_date": "2023-02-03T23:00:00+00:00",
+                "end_date": "2023-02-06T23:00:00+00:00",
+                "annee_scolaire": "2022-2023",
+                "zones": "Zone A"
+            }
+        ]""", 'utf-8')
 
 
 class TestInit(unittest.TestCase):
-    EXPECTED_KEYS = [
-        "date",
-        "nom_vacances",
-        "vacances_zone_a",
-        "vacances_zone_b",
-        "vacances_zone_c",
-    ]
+    def test_check_zone_OK(self):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        zone = "Zone A"
 
-    def parse_date(self, date):
-        return datetime.datetime.strptime(date, "%Y-%m-%d").date()
+        # WHEN
+        actual = holidays.check_zone(zone)
 
-    def test_is_holiday(self):
-        d = SchoolHolidayDates()
+        # THEN
+        self.assertEqual(True, actual)
 
-        self.assertTrue(d.is_holiday(datetime.date(2017, 12, 25)))
-        self.assertFalse(d.is_holiday(datetime.date(2017, 12, 1)))
+    def test_check_zone_KO(self):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        zone = "Zone not supported"
 
-        with self.assertRaisesRegex(UnsupportedYearException, "No data for year: 1985"):
-            d.is_holiday(datetime.date(1985, 2, 7))
+        # WHEN / THEN
+        self.assertRaises(UnsupportedZoneException, holidays.check_zone, zone)
 
-        with self.assertRaisesRegex(ValueError, "date should be a datetime.date"):
-            d.is_holiday(datetime.datetime(2017, 12, 1, 2, 0))
+    def test_check_name_OK(self):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        name = "Vacances d'Hiver"
 
-    def test_is_holiday_for_zone(self):
-        d = SchoolHolidayDates()
+        # WHEN
+        actual = holidays.check_name(name)
 
-        self.assertTrue(d.is_holiday_for_zone(datetime.date(2009, 2, 7), "A"))
-        self.assertFalse(d.is_holiday_for_zone(datetime.date(2009, 2, 7), "B"))
-        self.assertFalse(d.is_holiday_for_zone(datetime.date(2009, 2, 7), "C"))
-        self.assertFalse(d.is_holiday_for_zone(datetime.date(2009, 3, 7), "A"))
-        self.assertFalse(d.is_holiday_for_zone(datetime.date(2009, 6, 7), "A"))
+        # THEN
+        self.assertEqual(True, actual)
 
-        with self.assertRaisesRegex(UnsupportedYearException, "No data for year: 1985"):
-            d.is_holiday_for_zone(datetime.date(1985, 2, 7), "D")
-        with self.assertRaisesRegex(UnsupportedZoneException, "Unsupported zone: D"):
-            self.assertFalse(d.is_holiday_for_zone(datetime.date(2009, 2, 7), "D"))
-        with self.assertRaisesRegex(ValueError, "date should be a datetime.date"):
-            d.is_holiday_for_zone(datetime.datetime(2017, 12, 1, 2, 0), "A")
+    def test_check_name_KO(self):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        name = "Name not supported"
 
-    def test_holidays_for_year(self):
-        d = SchoolHolidayDates()
+        # WHEN / THEN
+        self.assertRaises(UnsupportedHolidayException, holidays.check_name, name)
 
-        res = d.holidays_for_year(2018)
-
-        self.assertEqual(len(res), 151)
-
-        for k, v in res.items():
-            self.assertEqual(sorted(v.keys()), self.EXPECTED_KEYS)
-
-        with self.assertRaisesRegex(UnsupportedYearException, "No data for year: 2027"):
-            self.assertEqual({}, d.holidays_for_year(2027))
-
-    def test_holiday_for_year_by_name(self):
-        d = SchoolHolidayDates()
-
-        res = d.holiday_for_year_by_name(2017, "Vacances de la Toussaint")
-
-        self.assertEqual(len(res), 16)
-        for k, v in res.items():
-            self.assertEqual(sorted(v.keys()), self.EXPECTED_KEYS)
-        expected_dates = [
-            self.parse_date(date)
-            for date in [
-                "2017-10-21",
-                "2017-10-22",
-                "2017-10-23",
-                "2017-10-24",
-                "2017-10-25",
-                "2017-10-26",
-                "2017-10-27",
-                "2017-10-28",
-                "2017-10-29",
-                "2017-10-30",
-                "2017-10-31",
-                "2017-11-01",
-                "2017-11-02",
-                "2017-11-03",
-                "2017-11-04",
-                "2017-11-05",
-            ]
+    def test_format_records(self):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        records = [
+            {
+                "description": "Vacances d'Hiver",
+                "start_date": "2023-02-03T23:00:00+00:00",
+                "end_date": "2023-02-06T23:00:00+00:00",
+                "annee_scolaire": "2022-2023",
+                "zones": "Zone A"
+            },
+            {
+                "description": "Vacances de Printemps",
+                "start_date": "2023-04-14T22:00:00+00:00",
+                "end_date": "2023-04-18T22:00:00+00:00",
+                "zones": "Zone B",
+                "annee_scolaire": "2022-2023"
+            }
         ]
-        self.assertEqual(sorted([v["date"] for v in res.values()]), expected_dates)
+        expected_holidays = {
+            date(2023, 2, 4): {
+                'date': date(2023, 2, 4),
+                'vacances_zone_a': True,
+                'vacances_zone_b': False,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances d'Hiver"
+            },
+            date(2023, 2, 5): {
+                'date': date(2023, 2, 5),
+                'vacances_zone_a': True,
+                'vacances_zone_b': False,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances d'Hiver"
+            },
+            date(2023, 2, 6): {
+                'date': date(2023, 2, 6),
+                'vacances_zone_a': True,
+                'vacances_zone_b': False,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances d'Hiver"
+            },
+            date(2023, 4, 15): {
+                'date': date(2023, 4, 15),
+                'vacances_zone_a': False,
+                'vacances_zone_b': True,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances de Printemps"
+            },
+            date(2023, 4, 16): {
+                'date': date(2023, 4, 16),
+                'vacances_zone_a': False,
+                'vacances_zone_b': True,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances de Printemps"
+            },
+            date(2023, 4, 17): {
+                'date': date(2023, 4, 17),
+                'vacances_zone_a': False,
+                'vacances_zone_b': True,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances de Printemps"
+            },
+            date(2023, 4, 18): {
+                'date': date(2023, 4, 18),
+                'vacances_zone_a': False,
+                'vacances_zone_b': True,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances de Printemps"
+            }
+        }
 
-        with self.assertRaisesRegex(UnsupportedYearException, "No data for year: 1985"):
-            self.assertEqual(
-                {}, d.holiday_for_year_by_name(1985, "Vacances de la Toussaint")
-            )
+        # WHEN
+        actual_holidays = format_records(records=records)
 
-        with self.assertRaisesRegex(
-            UnsupportedHolidayException, "Unknown holiday name: Foo"
-        ):
-            self.assertEqual({}, d.holiday_for_year_by_name(2017, "Foo"))
+        # THEN
+        self.assertEqual(expected_holidays, actual_holidays)
 
-    def test_holidays_for_year_and_zone(self):
-        d = SchoolHolidayDates()
+    @patch('urllib.request.urlopen')
+    def test_holidays_for_year(self, mock_holidays_for_year):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
 
-        res = d.holidays_for_year_and_zone(2017, "A")
+        mock_holidays_for_year.return_value.__enter__.return_value.status = 200
+        mock_holidays_for_year.return_value.__enter__.return_value.read.return_value = mocked_response_read
 
-        self.assertEqual(len(res), 118)
-        for k, v in res.items():
-            self.assertEqual(sorted(v.keys()), self.EXPECTED_KEYS)
+        expected_params = 'where=start_date%20%3E%3D%202023%20' \
+                          'AND%20start_date%20%3C%3D%202023' \
+                          '&order_by=start_date'
+        expected_url = f'{URL}?{expected_params}'
 
-            self.assertTrue(v["vacances_zone_a"])
+        # WHEN
+        actual_holidays = holidays.holidays_for_year(year=year)
 
-        with self.assertRaisesRegex(UnsupportedYearException, "No data for year: 1985"):
-            self.assertFalse(d.holidays_for_year_and_zone(1985, "D"))
+        # THEN
+        mock_holidays_for_year.assert_called_with(expected_url)
 
-        with self.assertRaisesRegex(UnsupportedZoneException, "Unsupported zone: D"):
-            self.assertFalse(d.holidays_for_year_and_zone(2017, "D"))
+    @patch('urllib.request.urlopen')
+    def test_holidays_for_year_by_name(self, mock_holidays_for_year_by_name):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
+        name = "Vacances d'Hiver"
 
-    def test_holidays_for_year_zone_and_name(self):
-        d = SchoolHolidayDates()
+        mock_holidays_for_year_by_name.return_value.__enter__.return_value.status = 200
+        mock_holidays_for_year_by_name.return_value.__enter__.return_value.read.return_value = mocked_response_read
 
-        res = d.holidays_for_year_zone_and_name(2017, "A", "Vacances de printemps")
-        self.assertEqual(len(res), 17)
+        expected_params = 'where=start_date%20%3E%3D%202023%20' \
+                          'AND%20start_date%20%3C%3D%202023%20' \
+                          'AND%20description%20%3D%20%22Vacances%20d%27Hiver%22' \
+                          '&order_by=start_date'
+        expected_url = f'{URL}?{expected_params}'
 
-        for k, v in res.items():
-            self.assertEqual(sorted(v.keys()), self.EXPECTED_KEYS)
-        expected_dates = [
-            self.parse_date(date)
-            for date in [
-                "2017-04-15",
-                "2017-04-16",
-                "2017-04-17",
-                "2017-04-18",
-                "2017-04-19",
-                "2017-04-20",
-                "2017-04-21",
-                "2017-04-22",
-                "2017-04-23",
-                "2017-04-24",
-                "2017-04-25",
-                "2017-04-26",
-                "2017-04-27",
-                "2017-04-28",
-                "2017-04-29",
-                "2017-04-30",
-                "2017-05-01",
-            ]
-        ]
-        self.assertEqual(sorted([v["date"] for v in res.values()]), expected_dates)
+        # WHEN
+        actual_holidays = holidays.holiday_for_year_by_name(year=year, name=name)
 
-        with self.assertRaisesRegex(UnsupportedYearException, "No data for year: 1985"):
-            d.holidays_for_year_zone_and_name(1985, "A", "Vacances de printemps")
+        # THEN
+        mock_holidays_for_year_by_name.assert_called_with(expected_url)
 
-        with self.assertRaisesRegex(UnsupportedZoneException, "Unsupported zone: D"):
-            d.holidays_for_year_zone_and_name(2017, "D", "Vacances de printemps")
+    @patch('urllib.request.urlopen')
+    def test_holidays_for_year_and_zone(self, mock_holidays_for_year_and_zone):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
+        zone = 'Zone A'
 
-        with self.assertRaisesRegex(
-            UnsupportedHolidayException, "Unknown holiday name: Foo"
-        ):
-            d.holidays_for_year_zone_and_name(2017, "A", "Foo")
+        mock_holidays_for_year_and_zone.return_value.__enter__.return_value.status = 200
+        mock_holidays_for_year_and_zone.return_value.__enter__.return_value.read.return_value = mocked_response_read
 
-    def test_supported_holidays_are_complete(self):
-        d = SchoolHolidayDates()
+        expected_params = 'where=start_date%20%3E%3D%202023%20' \
+                          'AND%20start_date%20%3C%3D%202023%20' \
+                          'AND%20zones%20%3D%20%22Zone%20A%22' \
+                          '&order_by=start_date'
+        expected_url = f'{URL}?{expected_params}'
 
-        res = d.holidays_for_year(2019)
+        # WHEN
+        actual_holidays = holidays.holidays_for_year_and_zone(year=year, zone=zone)
 
-        names = set()
-        for _, v in res.items():
-            names.add(v["nom_vacances"])
+        # THEN
+        mock_holidays_for_year_and_zone.assert_called_with(expected_url)
 
-        expected = set(SchoolHolidayDates.SUPPORTED_HOLIDAY_NAMES)
-        self.assertEqual(names, expected)
+    @patch('urllib.request.urlopen')
+    def test_holidays_for_year_zone_and_name(self, mock_holidays_for_year_zone_and_name):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
+        zone = 'Zone A'
+        name = "Vacances d'Hiver"
+
+        mock_holidays_for_year_zone_and_name.return_value.__enter__.return_value.status = 200
+        mock_holidays_for_year_zone_and_name.return_value.__enter__.return_value.read.return_value = mocked_response_read
+
+        expected_params = 'where=start_date%20%3E%3D%202023%20' \
+                          'AND%20start_date%20%3C%3D%202023%20' \
+                          'AND%20zones%20%3D%20%22Zone%20A%22%20' \
+                          'AND%20description%20%3D%20%22Vacances%20d%27Hiver%22' \
+                          '&order_by=start_date'
+        expected_url = f'{URL}?{expected_params}'
+
+        # WHEN
+        actual_holidays = holidays.holidays_for_year_zone_and_name(year=year, zone=zone, name=name)
+
+        # THEN
+        mock_holidays_for_year_zone_and_name.assert_called_with(expected_url)
+
+    def test_get_records_with_OK_response(self):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        mock_http_response = MagicMock(name='HTTPResponse')
+        mock_http_response.status = 200
+        mock_http_response.read.return_value = mocked_response_read
+
+        expected_records = {
+            date(2023, 2, 4): {
+                'date': date(2023, 2, 4),
+                'vacances_zone_a': True,
+                'vacances_zone_b': False,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances d'Hiver"
+            },
+            date(2023, 2, 5): {
+                'date': date(2023, 2, 5),
+                'vacances_zone_a': True,
+                'vacances_zone_b': False,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances d'Hiver"
+            },
+            date(2023, 2, 6): {
+                'date': date(2023, 2, 6),
+                'vacances_zone_a': True,
+                'vacances_zone_b': False,
+                'vacances_zone_c': False,
+                'nom_vacances': "Vacances d'Hiver"
+            }
+        }
+
+        # WHEN
+        actual_records = get_records(mock_http_response)
+
+        # THEN
+        self.assertEqual(expected_records, actual_records)
+
+    def test_get_records_with_KO_response(self):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        mock_http_response = MagicMock(name='HTTPResponse')
+        mock_http_response.status = 500
+
+        expected_records = {}
+
+        # WHEN / THEN
+        actual_records = get_records(mock_http_response)
+
+        # THEN
+        self.assertEqual(expected_records, actual_records)
+
+    @patch('urllib.request.urlopen')
+    def test_is_holiday_when_date_is_holiday(self, mock_is_holiday):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        day = date(2023, 2, 4)
+
+        mock_is_holiday.return_value.__enter__.return_value.status = 200
+        mock_is_holiday.return_value.__enter__.return_value.read.return_value = mocked_response_read
+
+        expected = True
+
+        # WHEN
+        actual = holidays.is_holiday(day)
+
+        # THEN
+        self.assertEqual(expected, actual)
+
+    @patch('urllib.request.urlopen')
+    def test_is_holiday_when_date_is_not_holiday(self, mock_is_holiday):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        day = date(2023, 1, 30)
+
+        mock_is_holiday.return_value.__enter__.return_value.status = 200
+        mock_is_holiday.return_value.__enter__.return_value.read.return_value = bytes("[]", 'utf-8')
+
+        expected = False
+
+        # WHEN
+        actual = holidays.is_holiday(day)
+
+        # THEN
+        self.assertEqual(expected, actual)
+
+    @patch('urllib.request.urlopen')
+    def test_is_holiday_for_zone_when_date_is_holiday(self, mock_is_holiday):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        day = date(2023, 2, 4)
+        zone = 'Zone A'
+
+        mock_is_holiday.return_value.__enter__.return_value.status = 200
+        mock_is_holiday.return_value.__enter__.return_value.read.return_value = mocked_response_read
+
+        expected = True
+
+        # WHEN
+        actual = holidays.is_holiday(day)
+
+        # THEN
+        self.assertEqual(expected, actual)
+
+    @patch('urllib.request.urlopen')
+    def test_is_holiday_for_zone_when_date_is_not_holiday(self, mock_is_holiday):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        day = date(2023, 2, 4)
+        zone = 'Zone C'
+
+        mock_is_holiday.return_value.__enter__.return_value.status = 200
+        mock_is_holiday.return_value.__enter__.return_value.read.return_value = bytes("[]", 'utf-8')
+
+        expected = False
+
+        # WHEN
+        actual = holidays.is_holiday(day)
+
+        # THEN
+        self.assertEqual(expected, actual)
