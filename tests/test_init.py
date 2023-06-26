@@ -3,25 +3,23 @@ import unittest
 from datetime import date
 from unittest.mock import patch, MagicMock
 
-from vacances_scolaires_france import SchoolHolidayDates,\
-    UnsupportedZoneException,\
-    UnsupportedHolidayException,\
-    get_records,\
+from vacances_scolaires_france import SchoolHolidayDates, \
+    UnsupportedZoneException, \
+    UnsupportedHolidayException, \
+    get_records, \
     format_records
-
 
 URL = 'https://data.education.gouv.fr/api/v2/catalog/datasets/fr-en-calendrier-scolaire/exports/json'
 
-mocked_response_read = bytes("""
-        [
-            {
-                "description": "Vacances d'Hiver",
-                "start_date": "2023-02-03T23:00:00+00:00",
-                "end_date": "2023-02-06T23:00:00+00:00",
-                "annee_scolaire": "2022-2023",
-                "zones": "Zone A"
-            }
-        ]""", 'utf-8')
+mocked_response_read = [
+    {
+        "description": "Vacances d'Hiver",
+        "start_date": "2023-02-03T23:00:00+00:00",
+        "end_date": "2023-02-06T23:00:00+00:00",
+        "annee_scolaire": "2022-2023",
+        "zones": "Zone A"
+    }
+]
 
 
 class TestInit(unittest.TestCase):
@@ -140,100 +138,12 @@ class TestInit(unittest.TestCase):
         # THEN
         self.assertEqual(expected_holidays, actual_holidays)
 
-    @patch('urllib.request.urlopen')
-    def test_holidays_for_year(self, mock_holidays_for_year):
-        # GIVEN
-        holidays = SchoolHolidayDates()
-        year = 2023
-
-        mock_holidays_for_year.return_value.__enter__.return_value.status = 200
-        mock_holidays_for_year.return_value.__enter__.return_value.read.return_value = mocked_response_read
-
-        expected_params = 'where=start_date%20%3E%3D%202023%20' \
-                          'AND%20start_date%20%3C%3D%202023' \
-                          '&order_by=start_date'
-        expected_url = f'{URL}?{expected_params}'
-
-        # WHEN
-        actual_holidays = holidays.holidays_for_year(year=year)
-
-        # THEN
-        mock_holidays_for_year.assert_called_with(expected_url)
-
-    @patch('urllib.request.urlopen')
-    def test_holidays_for_year_by_name(self, mock_holidays_for_year_by_name):
-        # GIVEN
-        holidays = SchoolHolidayDates()
-        year = 2023
-        name = "Vacances d'Hiver"
-
-        mock_holidays_for_year_by_name.return_value.__enter__.return_value.status = 200
-        mock_holidays_for_year_by_name.return_value.__enter__.return_value.read.return_value = mocked_response_read
-
-        expected_params = 'where=start_date%20%3E%3D%202023%20' \
-                          'AND%20start_date%20%3C%3D%202023%20' \
-                          'AND%20description%20%3D%20%22Vacances%20d%27Hiver%22' \
-                          '&order_by=start_date'
-        expected_url = f'{URL}?{expected_params}'
-
-        # WHEN
-        actual_holidays = holidays.holiday_for_year_by_name(year=year, name=name)
-
-        # THEN
-        mock_holidays_for_year_by_name.assert_called_with(expected_url)
-
-    @patch('urllib.request.urlopen')
-    def test_holidays_for_year_and_zone(self, mock_holidays_for_year_and_zone):
-        # GIVEN
-        holidays = SchoolHolidayDates()
-        year = 2023
-        zone = 'Zone A'
-
-        mock_holidays_for_year_and_zone.return_value.__enter__.return_value.status = 200
-        mock_holidays_for_year_and_zone.return_value.__enter__.return_value.read.return_value = mocked_response_read
-
-        expected_params = 'where=start_date%20%3E%3D%202023%20' \
-                          'AND%20start_date%20%3C%3D%202023%20' \
-                          'AND%20zones%20%3D%20%22Zone%20A%22' \
-                          '&order_by=start_date'
-        expected_url = f'{URL}?{expected_params}'
-
-        # WHEN
-        actual_holidays = holidays.holidays_for_year_and_zone(year=year, zone=zone)
-
-        # THEN
-        mock_holidays_for_year_and_zone.assert_called_with(expected_url)
-
-    @patch('urllib.request.urlopen')
-    def test_holidays_for_year_zone_and_name(self, mock_holidays_for_year_zone_and_name):
-        # GIVEN
-        holidays = SchoolHolidayDates()
-        year = 2023
-        zone = 'Zone A'
-        name = "Vacances d'Hiver"
-
-        mock_holidays_for_year_zone_and_name.return_value.__enter__.return_value.status = 200
-        mock_holidays_for_year_zone_and_name.return_value.__enter__.return_value.read.return_value = mocked_response_read
-
-        expected_params = 'where=start_date%20%3E%3D%202023%20' \
-                          'AND%20start_date%20%3C%3D%202023%20' \
-                          'AND%20zones%20%3D%20%22Zone%20A%22%20' \
-                          'AND%20description%20%3D%20%22Vacances%20d%27Hiver%22' \
-                          '&order_by=start_date'
-        expected_url = f'{URL}?{expected_params}'
-
-        # WHEN
-        actual_holidays = holidays.holidays_for_year_zone_and_name(year=year, zone=zone, name=name)
-
-        # THEN
-        mock_holidays_for_year_zone_and_name.assert_called_with(expected_url)
-
     def test_get_records_with_OK_response(self):
         # GIVEN
         holidays = SchoolHolidayDates()
-        mock_http_response = MagicMock(name='HTTPResponse')
-        mock_http_response.status = 200
-        mock_http_response.read.return_value = mocked_response_read
+        mock_http_response = MagicMock(name='requests.models.Response')
+        mock_http_response.status_code = 200
+        mock_http_response.json.return_value = mocked_response_read
 
         expected_records = {
             date(2023, 2, 4): {
@@ -268,8 +178,8 @@ class TestInit(unittest.TestCase):
     def test_get_records_with_KO_response(self):
         # GIVEN
         holidays = SchoolHolidayDates()
-        mock_http_response = MagicMock(name='HTTPResponse')
-        mock_http_response.status = 500
+        mock_http_response = MagicMock(name='requests.models.Response')
+        mock_http_response.status_code = 500
 
         expected_records = {}
 
@@ -279,14 +189,86 @@ class TestInit(unittest.TestCase):
         # THEN
         self.assertEqual(expected_records, actual_records)
 
-    @patch('urllib.request.urlopen')
+    @patch('requests.get')
+    def test_holidays_for_year(self, mock_holidays_for_year):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
+
+        expected_params = {
+            'where': f'start_date >= 2023 AND start_date <= 2023',
+            'order_by': 'start_date'
+        }
+
+        # WHEN
+        holidays.holidays_for_year(year=year)
+
+        # THEN
+        mock_holidays_for_year.assert_called_with(URL, params=expected_params)
+
+    @patch('requests.get')
+    def test_holidays_for_year_by_name(self, mock_holidays_for_year_by_name):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
+        name = "Vacances d'Hiver"
+
+        expected_params = {
+            'where': f'start_date >= 2023 AND start_date <= 2023 AND description = "Vacances d\'Hiver"',
+            'order_by': 'start_date'
+        }
+
+        # WHEN
+        holidays.holiday_for_year_by_name(year=year, name=name)
+
+        # THEN
+        mock_holidays_for_year_by_name.assert_called_with(URL, params=expected_params)
+
+    @patch('requests.get')
+    def test_holidays_for_year_and_zone(self, mock_holidays_for_year_and_zone):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
+        zone = 'Zone A'
+
+        expected_params = {
+            'where': f'start_date >= 2023 AND start_date <= 2023 AND zones = "Zone A"',
+            'order_by': 'start_date'
+        }
+
+        # WHEN
+        holidays.holidays_for_year_and_zone(year=year, zone=zone)
+
+        # THEN
+        mock_holidays_for_year_and_zone.assert_called_with(URL, params=expected_params)
+
+    @patch('requests.get')
+    def test_holidays_for_year_zone_and_name(self, mock_holidays_for_year_zone_and_name):
+        # GIVEN
+        holidays = SchoolHolidayDates()
+        year = 2023
+        zone = 'Zone A'
+        name = "Vacances d'Hiver"
+
+        expected_params = {
+            'where': f'start_date >= 2023 AND start_date <= 2023 AND zones = "Zone A" AND description = "Vacances d\'Hiver"',
+            'order_by': 'start_date'
+        }
+
+        # WHEN
+        holidays.holidays_for_year_zone_and_name(year=year, zone=zone, name=name)
+
+        # THEN
+        mock_holidays_for_year_zone_and_name.assert_called_with(URL, params=expected_params)
+
+    @patch('requests.get')
     def test_is_holiday_when_date_is_holiday(self, mock_is_holiday):
         # GIVEN
         holidays = SchoolHolidayDates()
         day = date(2023, 2, 4)
 
-        mock_is_holiday.return_value.__enter__.return_value.status = 200
-        mock_is_holiday.return_value.__enter__.return_value.read.return_value = mocked_response_read
+        mock_is_holiday.return_value.status_code = 200
+        mock_is_holiday.return_value.json.return_value = mocked_response_read
 
         expected = True
 
@@ -296,50 +278,14 @@ class TestInit(unittest.TestCase):
         # THEN
         self.assertEqual(expected, actual)
 
-    @patch('urllib.request.urlopen')
+    @patch('requests.get')
     def test_is_holiday_when_date_is_not_holiday(self, mock_is_holiday):
         # GIVEN
         holidays = SchoolHolidayDates()
         day = date(2023, 1, 30)
 
-        mock_is_holiday.return_value.__enter__.return_value.status = 200
-        mock_is_holiday.return_value.__enter__.return_value.read.return_value = bytes("[]", 'utf-8')
-
-        expected = False
-
-        # WHEN
-        actual = holidays.is_holiday(day)
-
-        # THEN
-        self.assertEqual(expected, actual)
-
-    @patch('urllib.request.urlopen')
-    def test_is_holiday_for_zone_when_date_is_holiday(self, mock_is_holiday):
-        # GIVEN
-        holidays = SchoolHolidayDates()
-        day = date(2023, 2, 4)
-        zone = 'Zone A'
-
-        mock_is_holiday.return_value.__enter__.return_value.status = 200
-        mock_is_holiday.return_value.__enter__.return_value.read.return_value = mocked_response_read
-
-        expected = True
-
-        # WHEN
-        actual = holidays.is_holiday(day)
-
-        # THEN
-        self.assertEqual(expected, actual)
-
-    @patch('urllib.request.urlopen')
-    def test_is_holiday_for_zone_when_date_is_not_holiday(self, mock_is_holiday):
-        # GIVEN
-        holidays = SchoolHolidayDates()
-        day = date(2023, 2, 4)
-        zone = 'Zone C'
-
-        mock_is_holiday.return_value.__enter__.return_value.status = 200
-        mock_is_holiday.return_value.__enter__.return_value.read.return_value = bytes("[]", 'utf-8')
+        mock_is_holiday.return_value.status_code = 200
+        mock_is_holiday.return_value.json.return_value = []
 
         expected = False
 

@@ -7,6 +7,7 @@ import urllib.request
 from typing import List, Dict
 
 import pytz
+import requests
 
 from vacances_scolaires_france.settings import API_URL
 
@@ -42,10 +43,9 @@ def format_records(records: List[Dict] = None) -> Dict:
     return holidays
 
 
-def get_records(response: http.client.HTTPResponse = None) -> Dict:
-    if response.status == 200:
-        response_json = json.loads(response.read().decode('utf-8'))
-        return format_records(response_json)
+def get_records(response: requests.models.Response = None) -> Dict:
+    if response.status_code == 200:
+        return format_records(response.json())
     else:
         return {}
 
@@ -75,23 +75,18 @@ class SchoolHolidayDates:
                 f"Unknown holiday name: '{name}'. Must be in {self.SUPPORTED_HOLIDAY_NAMES}")
         return True
 
-    def get_holidays_for_params(self, params):
-        with urllib.request.urlopen(
-                f'{API_URL}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}') as response:
-            return get_records(response)
-
     def is_holiday(self, date: datetime.date) -> bool:
         if not type(date) is datetime.date:
             raise ValueError("date should be a datetime.date")
 
         date_str = datetime.date.strftime(date, '%Y-%m-%d')
         params = {
-            'where': f'start_date <= "{date_str}" AND end_date >= "{date_str}" AND zones IN ("Zone A", "Zone B", "Zone C")',
+            'where': f'start_date <= "{date_str}" AND end_date >= "{date_str}" '
+                     f'AND zones IN ("Zone A", "Zone B", "Zone C")',
             'order_by': 'start_date'
         }
-        with urllib.request.urlopen(
-                f'{API_URL}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}') as response:
-            return len(get_records(response)) > 0
+        response = requests.get(API_URL, params=params)
+        return len(get_records(response)) > 0
 
     def is_holiday_for_zone(self, date: datetime.date, zone: str) -> bool:
         if not type(date) is datetime.date:
@@ -102,16 +97,16 @@ class SchoolHolidayDates:
             'where': f'start_date <= "{date_str}" AND end_date >= "{date_str}" AND zones = "{zone}"',
             'order_by': 'start_date'
         }
-        with urllib.request.urlopen(
-                f'{API_URL}?{urllib.parse.urlencode(params, quote_via=urllib.parse.quote)}') as response:
-            return len(get_records(response)) > 0
+        response = requests.get(API_URL, params=params)
+        return len(get_records(response)) > 0
 
     def holidays_for_year(self, year: int) -> Dict:
         params = {
             'where': f'start_date >= {year} AND start_date <= {year}',
             'order_by': 'start_date'
         }
-        return self.get_holidays_for_params(params)
+        response = requests.get(API_URL, params=params)
+        return get_records(response)
 
     def holiday_for_year_by_name(self, year: int, name: str) -> Dict:
         self.check_name(name)
@@ -119,7 +114,8 @@ class SchoolHolidayDates:
             'where': f'start_date >= {year} AND start_date <= {year} AND description = "{name}"',
             'order_by': 'start_date'
         }
-        return self.get_holidays_for_params(params)
+        response = requests.get(API_URL, params=params)
+        return get_records(response)
 
     def holidays_for_year_and_zone(self, year: int, zone: str) -> Dict:
         self.check_zone(zone)
@@ -127,7 +123,8 @@ class SchoolHolidayDates:
             'where': f'start_date >= {year} AND start_date <= {year} AND zones = "{zone}"',
             'order_by': 'start_date'
         }
-        return self.get_holidays_for_params(params)
+        response = requests.get(API_URL, params=params)
+        return get_records(response)
 
     def holidays_for_year_zone_and_name(self, year: int, zone: str, name: str) -> Dict:
         self.check_zone(zone)
@@ -136,4 +133,5 @@ class SchoolHolidayDates:
             'where': f'start_date >= {year} AND start_date <= {year} AND zones = "{zone}" AND description = "{name}"',
             'order_by': 'start_date'
         }
-        return self.get_holidays_for_params(params)
+        response = requests.get(API_URL, params=params)
+        return get_records(response)
